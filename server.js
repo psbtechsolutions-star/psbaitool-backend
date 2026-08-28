@@ -6,6 +6,7 @@ const { pool } = require('./db');
 const { hashPassword, verifyPassword, signToken, requireAuth } = require('./auth');
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' })); // generous limit since files are stored as base64 text
 
 // ---------- CORS ----------
