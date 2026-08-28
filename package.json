@@ -2,12 +2,12 @@
   "name": "psbaitool-backend",
   "version": "1.0.0",
   "description": "Backend API for PSBAITool — auth, history, favorites, files, and an AI chat proxy",
-  "main": "src/server.js",
+  "main": "server.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "migrate": "node src/migrate.js"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "migrate": "node migrate.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
