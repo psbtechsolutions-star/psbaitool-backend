@@ -27,7 +27,7 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
       ]
     }));
 
-    // Add system instruction when supplied
+    // Gemini request body
     const body = {
       contents,
       generationConfig: {
@@ -35,6 +35,7 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
       }
     };
 
+    // Add system instruction when supplied
     if (system) {
       body.systemInstruction = {
         parts: [
@@ -68,15 +69,28 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
       });
     }
 
-    // Return a simple response that the frontend can use
+    // Extract Gemini response text
     const text =
       data?.candidates?.[0]?.content?.parts
         ?.map((part) => part.text || '')
         .join('') || '';
 
+    if (!text) {
+      console.error('Gemini returned an empty response:', data);
+
+      return res.status(502).json({
+        error: 'Gemini returned an empty response'
+      });
+    }
+
+    // Return format expected by existing PSBAITool frontend
     res.json({
-      text,
-      candidates: data.candidates
+      content: [
+        {
+          type: 'text',
+          text
+        }
+      ]
     });
 
   } catch (err) {
@@ -86,4 +100,12 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
       error: 'Something went wrong talking to Gemini'
     });
   }
+});
+
+// ==================== SERVER ====================
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`PSBAITool backend listening on port ${PORT}`);
 });
