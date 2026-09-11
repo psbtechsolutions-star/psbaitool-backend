@@ -1,4 +1,3 @@
-
 require("dotenv").config();
 
 const express = require("express");
@@ -151,7 +150,7 @@ async function initDatabase() {
 }
 
 // ============================================================
-// AUTH
+// AUTH HELPERS
 // ============================================================
 
 function signToken(user) {
@@ -211,7 +210,7 @@ app.post(
         });
       }
 
-      if (password.length < 6) {
+      if (String(password).length < 6) {
         return res.status(400).json({
           error: "Password must be at least 6 characters"
         });
@@ -233,7 +232,7 @@ app.post(
       }
 
       const passwordHash = await bcrypt.hash(
-        password,
+        String(password),
         12
       );
 
@@ -250,14 +249,14 @@ app.post(
 
       const user = result.rows[0];
 
-      res.json({
+      return res.json({
         token: signToken(user),
         user
       });
     } catch (err) {
       console.error("Register error:", err);
 
-      res.status(500).json({
+      return res.status(500).json({
         error: "Registration failed"
       });
     }
@@ -307,7 +306,7 @@ app.post(
       const user = result.rows[0];
 
       const valid = await bcrypt.compare(
-        password,
+        String(password),
         user.password_hash
       );
 
@@ -317,7 +316,7 @@ app.post(
         });
       }
 
-      res.json({
+      return res.json({
         token: signToken(user),
         user: {
           id: user.id,
@@ -328,7 +327,7 @@ app.post(
     } catch (err) {
       console.error("Login error:", err);
 
-      res.status(500).json({
+      return res.status(500).json({
         error: "Login failed"
       });
     }
@@ -346,7 +345,10 @@ app.get(
     try {
       const result = await pool.query(
         `
-        SELECT id, email, created_at
+        SELECT
+          id,
+          email,
+          created_at
         FROM users
         WHERE id = $1
         `,
@@ -359,13 +361,13 @@ app.get(
         });
       }
 
-      res.json({
+      return res.json({
         user: result.rows[0]
       });
     } catch (err) {
       console.error("Auth me error:", err);
 
-      res.status(500).json({
+      return res.status(500).json({
         error: "Unable to load user"
       });
     }
@@ -400,13 +402,10 @@ app.post(
       }
 
       if (!process.env.OPENROUTER_API_KEY) {
-        console.error(
-          "OPENROUTER_API_KEY is missing"
-        );
+        console.error("OPENROUTER_API_KEY is missing");
 
         return res.status(500).json({
-          error:
-            "OpenRouter API key is not configured"
+          error: "OpenRouter API key is not configured"
         });
       }
 
@@ -421,7 +420,11 @@ app.post(
             message.role === "assistant"
               ? "assistant"
               : "user",
-          content: String(message.content)
+
+          content:
+            Array.isArray(message.content)
+              ? message.content
+              : String(message.content)
         }));
 
       if (cleanMessages.length === 0) {
@@ -435,20 +438,27 @@ app.post(
           process.env.OPENROUTER_MODEL ||
           "openrouter/free",
 
+        messages: [
+          ...(system
+            ? [
+                {
+                  role: "system",
+                  content: String(system)
+                }
+              ]
+            : []),
+
+          ...cleanMessages
+        ],
+
         max_tokens: Math.min(
           Math.max(
             Number(max_tokens) || 1000,
             1
           ),
           4000
-        ),
-
-        messages: cleanMessages
+        )
       };
-
-      if (system) {
-        body.system = String(system);
-      }
 
       if (
         typeof temperature === "number" &&
@@ -465,7 +475,7 @@ app.post(
       );
 
       const response = await fetch(
-        "https://openrouter.ai/api/v1/messages",
+        "https://openrouter.ai/api/v1/chat/completions",
         {
           method: "POST",
 
@@ -520,10 +530,17 @@ app.post(
         });
       }
 
+      const content =
+        data?.choices?.[0]?.message?.content;
+
       const text =
-        data?.content
-          ?.map(part => part?.text || "")
-          .join("") || "";
+        typeof content === "string"
+          ? content
+          : Array.isArray(content)
+            ? content
+                .map(part => part?.text || "")
+                .join("")
+            : "";
 
       if (!text) {
         console.error(
@@ -564,7 +581,7 @@ app.post(
 );
 
 // ============================================================
-// CONVERSATIONS
+// CONVERSATIONS - GET
 // ============================================================
 
 app.get(
@@ -587,7 +604,7 @@ app.get(
         [req.user.id]
       );
 
-      res.json({
+      return res.json({
         conversations: result.rows
       });
     } catch (err) {
@@ -596,13 +613,17 @@ app.get(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           "Unable to load conversations"
       });
     }
   }
 );
+
+// ============================================================
+// CONVERSATIONS - CREATE
+// ============================================================
 
 app.post(
   "/api/conversations",
@@ -629,7 +650,7 @@ app.post(
         ]
       );
 
-      res.json({
+      return res.json({
         conversation: result.rows[0]
       });
     } catch (err) {
@@ -638,13 +659,17 @@ app.post(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           "Unable to save conversation"
       });
     }
   }
 );
+
+// ============================================================
+// CONVERSATIONS - UPDATE
+// ============================================================
 
 app.put(
   "/api/conversations/:id",
@@ -660,12 +685,9 @@ app.put(
         `
         UPDATE conversations
         SET
-          title =
-            COALESCE($1, title),
-          messages =
-            COALESCE($2, messages),
-          updated_at =
-            CURRENT_TIMESTAMP
+          title = COALESCE($1, title),
+          messages = COALESCE($2, messages),
+          updated_at = CURRENT_TIMESTAMP
         WHERE id = $3
           AND user_id = $4
         RETURNING *
@@ -687,7 +709,7 @@ app.put(
         });
       }
 
-      res.json({
+      return res.json({
         conversation: result.rows[0]
       });
     } catch (err) {
@@ -696,13 +718,17 @@ app.put(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           "Unable to update conversation"
       });
     }
   }
 );
+
+// ============================================================
+// CONVERSATIONS - DELETE
+// ============================================================
 
 app.delete(
   "/api/conversations/:id",
@@ -729,7 +755,7 @@ app.delete(
         });
       }
 
-      res.json({
+      return res.json({
         success: true
       });
     } catch (err) {
@@ -738,7 +764,7 @@ app.delete(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           "Unable to delete conversation"
       });
@@ -747,7 +773,7 @@ app.delete(
 );
 
 // ============================================================
-// FAVORITES
+// FAVORITES - GET
 // ============================================================
 
 app.get(
@@ -757,7 +783,10 @@ app.get(
     try {
       const result = await pool.query(
         `
-        SELECT id, item, created_at
+        SELECT
+          id,
+          item,
+          created_at
         FROM favorites
         WHERE user_id = $1
         ORDER BY created_at DESC
@@ -765,7 +794,7 @@ app.get(
         [req.user.id]
       );
 
-      res.json({
+      return res.json({
         favorites: result.rows
       });
     } catch (err) {
@@ -774,13 +803,17 @@ app.get(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           "Unable to load favorites"
       });
     }
   }
 );
+
+// ============================================================
+// FAVORITES - CREATE
+// ============================================================
 
 app.post(
   "/api/favorites",
@@ -809,7 +842,7 @@ app.post(
         ]
       );
 
-      res.json({
+      return res.json({
         favorite: result.rows[0]
       });
     } catch (err) {
@@ -818,13 +851,17 @@ app.post(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           "Unable to save favorite"
       });
     }
   }
 );
+
+// ============================================================
+// FAVORITES - DELETE
+// ============================================================
 
 app.delete(
   "/api/favorites/:id",
@@ -843,7 +880,7 @@ app.delete(
         ]
       );
 
-      res.json({
+      return res.json({
         success: true
       });
     } catch (err) {
@@ -852,7 +889,7 @@ app.delete(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           "Unable to delete favorite"
       });
@@ -861,7 +898,7 @@ app.delete(
 );
 
 // ============================================================
-// FILES
+// FILES - GET
 // ============================================================
 
 app.get(
@@ -883,7 +920,7 @@ app.get(
         [req.user.id]
       );
 
-      res.json({
+      return res.json({
         files: result.rows
       });
     } catch (err) {
@@ -892,13 +929,17 @@ app.get(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           "Unable to load files"
       });
     }
   }
 );
+
+// ============================================================
+// FILES - CREATE
+// ============================================================
 
 app.post(
   "/api/files",
@@ -932,7 +973,7 @@ app.post(
         ]
       );
 
-      res.json({
+      return res.json({
         file: result.rows[0]
       });
     } catch (err) {
@@ -941,13 +982,17 @@ app.post(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           "Unable to save file"
       });
     }
   }
 );
+
+// ============================================================
+// FILES - DELETE
+// ============================================================
 
 app.delete(
   "/api/files/:id",
@@ -966,7 +1011,7 @@ app.delete(
         ]
       );
 
-      res.json({
+      return res.json({
         success: true
       });
     } catch (err) {
@@ -975,7 +1020,7 @@ app.delete(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           "Unable to delete file"
       });
@@ -1004,7 +1049,7 @@ app.use(
       });
     }
 
-    res.status(500).json({
+    return res.status(500).json({
       error:
         "Internal server error"
     });
